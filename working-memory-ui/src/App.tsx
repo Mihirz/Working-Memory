@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Play, Square, Clock, History, Brain, Sun, Moon } from "lucide-react";
+import { Play, Square, Clock, History, Brain, Sun, Moon, ChevronLeft, ChevronRight } from "lucide-react";
 
 // ---------- Utility helpers ----------
 function classNames(...classes: (string | boolean | undefined)[]) {
@@ -55,8 +55,11 @@ export default function AgentWorkSessionUI() {
   const [elapsed, setElapsed] = useState(0);
 
   const [sessions, setSessions] = useState(seedSessions);
-  const [page, setPage] = useState<"about" | "workflows" | "flow" | "detail">("flow");
+  const [page, setPage] = useState<"about" | "workflows" | "flow" | "detail" | "day">("flow");
   const [selectedSession, setSelectedSession] = useState<any | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [wfView, setWfView] = useState<"list" | "calendar">("list");
+  const [monthOffset, setMonthOffset] = useState(0);
 
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -112,6 +115,37 @@ export default function AgentWorkSessionUI() {
   };
 
   const elapsedText = useMemo(() => formatDuration(elapsed), [elapsed]);
+
+  // Choose the month to display: latest session's month or current month, then apply offset
+  const baseDate = useMemo(() => {
+    if (!sessions || sessions.length === 0) return new Date();
+    const latest = [...sessions].sort((a: any, b: any) => b.startedAt - a.startedAt)[0].startedAt;
+    return new Date(latest);
+  }, [sessions]);
+
+  const displayDate = useMemo(() => {
+    const d = new Date(baseDate);
+    d.setDate(1);
+    d.setMonth(d.getMonth() + monthOffset);
+    return d;
+  }, [baseDate, monthOffset]);
+
+  const year = displayDate.getFullYear();
+  const month = displayDate.getMonth(); // 0-indexed
+
+  const daysInMonth = useMemo(() => new Date(year, month + 1, 0).getDate(), [year, month]);
+  const firstDayIdx = useMemo(() => new Date(year, month, 1).getDay(), [year, month]); // 0=Sun
+
+  const sessionsByDay = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    sessions.forEach((s: any) => {
+      const d = new Date(s.startedAt);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (!map[key]) map[key] = [];
+      map[key].push(s);
+    });
+    return map;
+  }, [sessions]);
 
   return (
     <div className="min-h-[100vh] w-full overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-white">
@@ -265,21 +299,160 @@ export default function AgentWorkSessionUI() {
         {page === "workflows" && (
           <section className="space-y-6">
             <GlassCard>
-              <div className="mb-4 flex items-center gap-2">
-                <History className="h-5 w-5" />
-                <h3 className="text-[1.15rem] font-semibold text-slate-900 dark:text-white/90">Past workflows</h3>
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <History className="h-5 w-5" />
+                  <h3 className="text-[1.15rem] font-semibold text-slate-900 dark:text-white/90">Past workflows</h3>
+                </div>
+                <div className="inline-flex rounded-lg ring-1 ring-slate-200 bg-white/70 dark:bg-white/5 dark:ring-white/10 overflow-hidden">
+                  <button
+                    onClick={() => setWfView("list")}
+                    className={classNames(
+                      "px-3 py-1.5 text-[0.925rem] transition-colors",
+                      wfView === "list"
+                        ? "bg-slate-900/5 text-slate-900 dark:bg-white/10 dark:text-white"
+                        : "text-slate-700 hover:text-slate-900 hover:bg-slate-900/5 dark:text-white/80 dark:hover:text-white dark:hover:bg-white/5"
+                    )}
+                  >
+                    List
+                  </button>
+                  <button
+                    onClick={() => setWfView("calendar")}
+                    className={classNames(
+                      "px-3 py-1.5 text-[0.925rem] transition-colors",
+                      wfView === "calendar"
+                        ? "bg-slate-900/5 text-slate-900 dark:bg-white/10 dark:text-white"
+                        : "text-slate-700 hover:text-slate-900 hover:bg-slate-900/5 dark:text-white/80 dark:hover:text-white dark:hover:bg-white/5"
+                    )}
+                  >
+                    Calendar
+                  </button>
+                </div>
+              </div>
+
+              {wfView === "list" && (
+                <div className="divide-y divide-white/10">
+                  {sessions.map((s) => {
+                    const duration = s.endedAt - s.startedAt;
+                    const started = new Date(s.startedAt).toLocaleString();
+                    const ended = new Date(s.endedAt).toLocaleString();
+                    return (
+                      <div
+                        key={s.id}
+                        className="py-3 flex items-center justify-between gap-3 cursor-pointer rounded-xl -mx-5 px-5 sm:-mx-7 sm:px-7 lg:-mx-9 lg:px-9 hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
+                        onClick={() => { setSelectedSession(s); setPage("detail"); }}
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="grid place-items-center rounded-lg bg-slate-900/5 p-2 ring-1 ring-slate-200 dark:bg-white/8 dark:ring-white/10">
+                            <Clock className="h-5 w-5 text-slate-800 dark:text-white/90" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-[0.925rem] font-semibold text-slate-900 dark:text-white">{s.title}</div>
+                            <div className="mt-0.5 text-[0.8rem] text-slate-600 dark:text-white/60">{started} → {ended}</div>
+                          </div>
+                        </div>
+                        <Pill>{formatDuration(duration)}</Pill>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {wfView === "calendar" && (
+                <div className="mt-2">
+                  {/* Month nav */}
+                  <div className="mb-2 flex items-center justify-between">
+                    <div className="text-[0.925rem] font-semibold text-slate-900 dark:text-white/90">
+                      {displayDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                    </div>
+                    <div className="inline-flex overflow-hidden rounded-md ring-1 ring-slate-200 bg-white/70 dark:bg-white/5 dark:ring-white/10">
+                      <button
+                        onClick={() => setMonthOffset((o) => o - 1)}
+                        className="px-2 py-1.5 hover:bg-slate-900/5 dark:hover:bg-white/10 transition-colors"
+                        aria-label="Previous month"
+                        title="Previous month"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={() => setMonthOffset((o) => o + 1)}
+                        className="px-2 py-1.5 hover:bg-slate-900/5 dark:hover:bg-white/10 transition-colors"
+                        aria-label="Next month"
+                        title="Next month"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Weekday header */}
+                  <div className="grid grid-cols-7 text-center text-[0.8rem] text-slate-600 dark:text-white/60">
+                    {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((d) => (
+                      <div key={d} className="py-2">{d}</div>
+                    ))}
+                  </div>
+                  {/* Days grid */}
+                  <div className="grid grid-cols-7 gap-2">
+                    {Array.from({ length: firstDayIdx }).map((_, i) => (
+                      <div key={`b-${i}`} className="h-24 rounded-lg" />
+                    ))}
+                    {Array.from({ length: daysInMonth }).map((_, i) => {
+                      const day = i + 1;
+                      const key = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                      const daySessions = sessionsByDay[key] || [];
+                      return (
+                        <div
+                          key={key}
+                          className="h-36 md:h-40 lg:h-44 rounded-lg ring-1 ring-slate-200 bg-white/70 p-2 text-left dark:bg-white/5 dark:ring-white/10 flex flex-col overflow-hidden cursor-pointer hover:bg-slate-900/5 dark:hover:bg-white/10 transition-colors"
+                          onClick={() => { setSelectedDay(key); setPage('day'); }}
+                        >
+                          <div className="text-[0.8rem] font-semibold text-slate-700 dark:text-white/80 shrink-0">{day}</div>
+                          <div className="mt-1 flex-1 min-h-0 flex flex-col gap-1 overflow-y-auto pr-1">
+                            {daySessions.map((s: any) => (
+                              <button
+                                key={s.id}
+                                onClick={(e) => { e.stopPropagation(); setSelectedSession(s); setPage('detail'); }}
+                                className="w-full overflow-hidden truncate rounded-md bg-slate-900/5 px-2 py-1 text-left text-[0.8rem] text-slate-900 hover:bg-slate-900/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
+                                title={s.title}
+                              >
+                                {new Date(s.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {s.title}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </GlassCard>
+          </section>
+        )}
+
+        {page === "day" && selectedDay && (
+          <section className="space-y-6">
+            <GlassCard>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-[1.35rem] font-semibold text-slate-900 dark:text-white/90">
+                  {new Date(selectedDay).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                </h2>
+                <button
+                  onClick={() => setPage("workflows")}
+                  className="rounded-md px-3 py-1.5 text-[0.925rem] text-slate-700 hover:text-slate-900 hover:bg-slate-900/5 dark:text-white/80 dark:hover:text-white dark:hover:bg-white/5 transition-all duration-200"
+                >
+                  Back
+                </button>
               </div>
 
               <div className="divide-y divide-white/10">
-                {sessions.map((s) => {
+                {(sessionsByDay[selectedDay] || []).map((s: any) => {
                   const duration = s.endedAt - s.startedAt;
-                  const started = new Date(s.startedAt).toLocaleString();
-                  const ended = new Date(s.endedAt).toLocaleString();
+                  const started = new Date(s.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  const ended = new Date(s.endedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                   return (
                     <div
                       key={s.id}
                       className="py-3 flex items-center justify-between gap-3 cursor-pointer rounded-xl -mx-5 px-5 sm:-mx-7 sm:px-7 lg:-mx-9 lg:px-9 hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
-                      onClick={() => { setSelectedSession(s); setPage("detail"); }}
+                      onClick={() => { setSelectedSession(s); setPage('detail'); }}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="grid place-items-center rounded-lg bg-slate-900/5 p-2 ring-1 ring-slate-200 dark:bg-white/8 dark:ring-white/10">
@@ -294,6 +467,10 @@ export default function AgentWorkSessionUI() {
                     </div>
                   );
                 })}
+
+                {(!sessionsByDay[selectedDay] || sessionsByDay[selectedDay].length === 0) && (
+                  <div className="py-6 text-center text-[0.925rem] text-slate-600 dark:text-white/60">No workflows on this day.</div>
+                )}
               </div>
             </GlassCard>
           </section>
