@@ -1,30 +1,54 @@
-# 1. REMOVE THE "@function_tool" DECORATOR
-# from agents import function_tool
+import asyncio
+import subprocess  # <-- We are using subprocess, not GitPython
 
-# @function_tool <-- DELETE THIS LINE
-async def get_git_diff(workspace_path: str) -> str:  # <-- This is now a NORMAL async function
+async def get_git_diff(workspace_path: str) -> str:
     """
     Gets all uncommitted (staged and unstaged) git diffs from
-    the specified local repository path.
+    the specified local repository path using a subprocess.
     
     Args:
         workspace_path: The absolute file path to the local git repository.
     """
-    print(f"[Tool Stub] get_git_diff was called with path: {workspace_path}")
+    print(f"[Tool] get_git_diff called with path: {workspace_path}")
     
-    # We are bypassing all subprocess calls and returning a fake diff.
-    fake_diff = """
-    --- FAKE UNSTAGED CHANGES ---
-    --- a/agent.py
-    +++ b/agent.py
-    @@ -1,5 +1,6 @@
-     import os
-     from agents import Agent, OpenAIChatCompletionsModel
-+    # This is a new line
-     from openai import OpenAI
-     
-     # Import our custom tool
-    """
-    
-    print("[Tool Stub] Returning fake git diff.")
-    return fake_diff
+    if not workspace_path:
+        return "Error: No workspace_path provided."
+
+    def run_git_operations():
+        # This is the synchronous code that will run in a thread
+        try:
+            # 1. Get unstaged changes
+            unstaged_result = subprocess.run(
+                ["git", "-C", workspace_path, "diff"],
+                capture_output=True, text=True, check=True
+            )
+            
+            # 2. Get staged changes
+            staged_result = subprocess.run(
+                ["git", "-C", workspace_path, "diff", "--staged"],
+                capture_output=True, text=True, check=True
+            )
+            
+            full_diff = ""
+            if unstaged_result.stdout:
+                full_diff += f"--- UNSTAGED CHANGES ---\n{unstaged_result.stdout}\n"
+            if staged_result.stdout:
+                full_diff += f"--- STAGED CHANGES ---\n{staged_result.stdout}\n"
+
+            if not full_diff:
+                return "No uncommitted changes (staged or unstaged) found."
+            
+            print("[Tool] Returning REAL git diff.")
+            return full_diff
+
+        except subprocess.CalledProcessError as e:
+            return f"Error running git diff: {e.stderr}"
+        except FileNotFoundError:
+            return "Error: 'git' command not found. Is it installed and in your system PATH?"
+        except Exception as e:
+            return f"An unexpected error occurred: {str(e)}"
+
+    # Run the blocking subprocess calls in a separate thread
+    return await asyncio.to_thread(run_git_operations)
+
+# what is going on
