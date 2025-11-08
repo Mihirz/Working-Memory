@@ -55,7 +55,8 @@ export default function AgentWorkSessionUI() {
   const [elapsed, setElapsed] = useState(0);
 
   const [sessions, setSessions] = useState(seedSessions);
-  const [page, setPage] = useState<"about" | "workflows" | "flow">("flow");
+  const [page, setPage] = useState<"about" | "workflows" | "flow" | "detail">("flow");
+  const [selectedSession, setSelectedSession] = useState<any | null>(null);
 
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -98,6 +99,7 @@ export default function AgentWorkSessionUI() {
     const newSession = {
       id: `s-${Math.random().toString(36).slice(2, 7)}`,
       title: "Focused session",
+      description: "",
       startedAt: startAt,
       endedAt,
       tags: [],
@@ -127,7 +129,7 @@ export default function AgentWorkSessionUI() {
           {/* Left: Logo */}
           <button
             className="flex items-center gap-2 text-slate-900 dark:text-slate-100 transition-all duration-200 hover:scale-[1.03] hover:brightness-110"
-            onClick={() => setPage("flow")}
+            onClick={() => { setSelectedSession(null); setPage("flow"); }}
             aria-label="Working Memory Home"
           >
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-slate-900/5 ring-1 ring-slate-200 dark:bg-white/10 dark:ring-white/15">
@@ -274,7 +276,11 @@ export default function AgentWorkSessionUI() {
                   const started = new Date(s.startedAt).toLocaleString();
                   const ended = new Date(s.endedAt).toLocaleString();
                   return (
-                    <div key={s.id} className="py-3 flex items-center justify-between gap-3">
+                    <div
+                      key={s.id}
+                      className="py-3 flex items-center justify-between gap-3 cursor-pointer rounded-md hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
+                      onClick={() => { setSelectedSession(s); setPage("detail"); }}
+                    >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="grid place-items-center rounded-lg bg-slate-900/5 p-2 ring-1 ring-slate-200 dark:bg-white/8 dark:ring-white/10">
                           <Clock className="h-5 w-5 text-slate-800 dark:text-white/90" />
@@ -288,6 +294,62 @@ export default function AgentWorkSessionUI() {
                     </div>
                   );
                 })}
+              </div>
+            </GlassCard>
+          </section>
+        )}
+
+        {page === "detail" && selectedSession && (
+          <section className="space-y-6">
+            <GlassCard>
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-[1.35rem] font-semibold text-slate-900 dark:text-white/90">{selectedSession.title || "Workflow"}</h2>
+                <button
+                  onClick={() => setPage("workflows")}
+                  className="rounded-md px-3 py-1.5 text-[0.925rem] text-slate-700 hover:text-slate-900 hover:bg-slate-900/5 dark:text-white/80 dark:hover:text-white dark:hover:bg-white/5 transition-all duration-200"
+                >
+                  Back to past workflows
+                </button>
+              </div>
+
+              {/* Metadata grid */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                  <div className="text-[0.8rem] text-slate-600 dark:text-white/60">Date</div>
+                  <div className="text-[0.925rem] font-semibold text-slate-900 dark:text-white">
+                    {new Date(selectedSession.startedAt).toLocaleDateString()}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[0.8rem] text-slate-600 dark:text-white/60">Start time</div>
+                  <div className="text-[0.925rem] font-semibold text-slate-900 dark:text-white">
+                    {new Date(selectedSession.startedAt).toLocaleTimeString()}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[0.8rem] text-slate-600 dark:text-white/60">End time</div>
+                  <div className="text-[0.925rem] font-semibold text-slate-900 dark:text-white">
+                    {new Date(selectedSession.endedAt).toLocaleTimeString()}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[0.8rem] text-slate-600 dark:text-white/60">Duration</div>
+                  <div className="text-[0.925rem] font-semibold text-slate-900 dark:text-white">
+                    {formatDuration(selectedSession.endedAt - selectedSession.startedAt)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Description box (backend-pluggable) */}
+              <div className="mt-6">
+                <label className="block text-[0.8rem] text-slate-600 dark:text-white/60 mb-2">Description</label>
+                <textarea
+                  value={selectedSession.description ?? ""}
+                  onChange={(e) => setSelectedSession({ ...selectedSession, description: e.target.value })}
+                  placeholder="Description of this workflow… (backend can persist this)"
+                  className="w-full rounded-lg border border-slate-300 bg-white/70 p-3 text-[0.925rem] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40 dark:focus:ring-indigo-300"
+                  rows={6}
+                />
               </div>
             </GlassCard>
           </section>
