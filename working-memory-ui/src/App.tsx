@@ -60,6 +60,7 @@ export default function AgentWorkSessionUI() {
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [wfView, setWfView] = useState<"list" | "calendar">("list");
   const [monthOffset, setMonthOffset] = useState(0);
+  const [backTarget, setBackTarget] = useState<{ page: "workflows" | "day"; day?: string } | null>(null);
 
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === "undefined") return true;
@@ -163,7 +164,7 @@ export default function AgentWorkSessionUI() {
           {/* Left: Logo */}
           <button
             className="flex items-center gap-2 text-slate-900 dark:text-slate-100 transition-all duration-200 hover:scale-[1.03] hover:brightness-110"
-            onClick={() => { setSelectedSession(null); setPage("flow"); }}
+            onClick={() => { setBackTarget(null); setSelectedSession(null); setPage("flow"); }}
             aria-label="Working Memory Home"
           >
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-slate-900/5 ring-1 ring-slate-200 dark:bg-white/10 dark:ring-white/15">
@@ -186,7 +187,7 @@ export default function AgentWorkSessionUI() {
               About
             </button>
             <button
-              onClick={() => setPage("workflows")}
+              onClick={() => { setBackTarget(null); setPage("workflows"); }}
               className={classNames(
                 "rounded-md px-3 py-2 transition-all duration-200 hover:scale-[1.03] hover:brightness-110",
                 page === "workflows"
@@ -257,7 +258,7 @@ export default function AgentWorkSessionUI() {
             About
           </button>
           <button
-            onClick={() => setPage("workflows")}
+            onClick={() => { setBackTarget(null); setPage("workflows"); }}
             className={classNames(
               "rounded-md px-3 py-1.5 text-sm transition-all duration-200 hover:scale-[1.03] hover:brightness-110",
               page === "workflows"
@@ -340,7 +341,7 @@ export default function AgentWorkSessionUI() {
                       <div
                         key={s.id}
                         className="py-3 flex items-center justify-between gap-3 cursor-pointer rounded-xl -mx-5 px-5 sm:-mx-7 sm:px-7 lg:-mx-9 lg:px-9 hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
-                        onClick={() => { setSelectedSession(s); setPage("detail"); }}
+                        onClick={() => { setBackTarget({ page: "workflows" }); setSelectedSession(s); setPage("detail"); }}
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="grid place-items-center rounded-lg bg-slate-900/5 p-2 ring-1 ring-slate-200 dark:bg-white/8 dark:ring-white/10">
@@ -410,7 +411,7 @@ export default function AgentWorkSessionUI() {
                             {daySessions.map((s: any) => (
                               <button
                                 key={s.id}
-                                onClick={(e) => { e.stopPropagation(); setSelectedSession(s); setPage('detail'); }}
+                                onClick={(e) => { e.stopPropagation(); setBackTarget({ page: 'day', day: key }); setSelectedSession(s); setPage('detail'); }}
                                 className="w-full overflow-hidden truncate rounded-md bg-slate-900/5 px-2 py-1 text-left text-[0.8rem] text-slate-900 hover:bg-slate-900/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
                                 title={s.title}
                               >
@@ -452,7 +453,7 @@ export default function AgentWorkSessionUI() {
                     <div
                       key={s.id}
                       className="py-3 flex items-center justify-between gap-3 cursor-pointer rounded-xl -mx-5 px-5 sm:-mx-7 sm:px-7 lg:-mx-9 lg:px-9 hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
-                      onClick={() => { setSelectedSession(s); setPage('detail'); }}
+                      onClick={() => { setBackTarget({ page: 'day', day: selectedDay || undefined }); setSelectedSession(s); setPage('detail'); }}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="grid place-items-center rounded-lg bg-slate-900/5 p-2 ring-1 ring-slate-200 dark:bg-white/8 dark:ring-white/10">
@@ -482,7 +483,15 @@ export default function AgentWorkSessionUI() {
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-[1.35rem] font-semibold text-slate-900 dark:text-white/90">{selectedSession.title || "Workflow"}</h2>
                 <button
-                  onClick={() => setPage("workflows")}
+                  onClick={() => {
+                    if (backTarget?.page === 'day') {
+                      if (backTarget.day) setSelectedDay(backTarget.day);
+                      setPage('day');
+                    } else {
+                      setPage('workflows');
+                    }
+                    setBackTarget(null);
+                  }}
                   className="rounded-md px-3 py-1.5 text-[0.925rem] text-slate-700 hover:text-slate-900 hover:bg-slate-900/5 dark:text-white/80 dark:hover:text-white dark:hover:bg-white/5 transition-all duration-200"
                 >
                   Back
