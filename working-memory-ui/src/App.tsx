@@ -53,7 +53,7 @@ export default function AgentWorkSessionUI() {
   const [isActive, setIsActive] = useState(false);
   const [startAt, setStartAt] = useState<number | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [sessionTitle, setSessionTitle] = useState("Focused session");
+  const [sessionTitle, setSessionTitle] = useState("");
   const [sessionDescription, setSessionDescription] = useState("");
 
   const [sessions, setSessions] = useState(seedSessions);
@@ -106,6 +106,7 @@ export default function AgentWorkSessionUI() {
     setStartAt(null);
     setElapsed(0);
     setSessionTitle("");
+    setSessionDescription("");
   };
 
   const handleStart = () => {
@@ -119,9 +120,10 @@ export default function AgentWorkSessionUI() {
   const handleStop = () => {
     if (!isActive || !startAt) return;
     const endedAt = Date.now();
+    const title = sessionTitle.trim() ? sessionTitle.trim() : "Focused session";
     const newSession = {
       id: `s-${Math.random().toString(36).slice(2, 7)}`,
-      title: sessionTitle,
+      title,
       description: sessionDescription,
       notes: "",
       startedAt: startAt,
@@ -620,7 +622,7 @@ export default function AgentWorkSessionUI() {
                   <input
                     value={sessionTitle}
                     onChange={(e) => setSessionTitle(e.target.value)}
-                    placeholder="Focused session"
+                    placeholder="(optional)"
                     className="mt-1 w-full rounded-md border border-slate-300 bg-white/70 px-3 py-2 text-[0.925rem] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40 dark:focus:ring-indigo-300"
                   />
 
