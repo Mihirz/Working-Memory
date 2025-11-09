@@ -70,6 +70,7 @@ export default function AgentWorkSessionUI() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHit, setSearchHit] = useState<any | null>(null);
   const [searchScore, setSearchScore] = useState<number | null>(null);
+  const [searchScores, setSearchScores] = useState<Record<string, number> | null>(null);
 
   const [projectPath, setProjectPath] = useState<string | null>(null);
 
@@ -300,6 +301,72 @@ export default function AgentWorkSessionUI() {
     });
   }, [corpus, df]);
 
+  // Compute a higher-contrast green tint style based on similarity score (0..best)
+  const tintStyle = (score?: number): React.CSSProperties | undefined => {
+    if (!searchScores || score == null || Number.isNaN(score) || score <= 0 || !searchScore || searchScore <= 0) return undefined;
+
+    // Normalize against the best score for this query
+    const norm = Math.max(0, Math.min(1, score / searchScore));
+
+    // Exaggerate separation so close scores look meaningfully different
+    // Gamma < 1 spreads out mid/high values; gamma > 1 compresses them.
+    const gamma = 0.65; // stronger visual separation
+    const boosted = Math.pow(norm, gamma);
+
+    // Emerald base color (rgb) and dynamic alphas
+    const base = "16,185,129"; // Tailwind emerald-500
+
+    // Use broader alpha range for clear contrast
+    const maxBg = isDark ? 0.38 : 0.28;   // brighter cap
+    const minBg = isDark ? 0.06 : 0.04;   // faint floor (still visible)
+    const bgAlpha = minBg + (maxBg - minBg) * boosted;
+
+    const maxRing = 0.85;  // stronger outline for best matches
+    const minRing = 0.18;  // faint outline for weak matches
+    const ringAlpha = minRing + (maxRing - minRing) * boosted;
+
+    // Subtle inner glow to increase perceived difference between close scores
+    const insetAlpha = 0.12 * boosted;
+
+    return {
+      backgroundColor: `rgba(${base}, ${bgAlpha})`,
+      boxShadow: `0 0 0 1px rgba(${base}, ${ringAlpha}), inset 0 0 0 9999px rgba(0,0,0, ${isDark ? insetAlpha : insetAlpha * 0.6})`,
+      transition: 'background-color 120ms ease, box-shadow 120ms ease',
+    };
+  };
+
+  // Search entire corpus and return best match + per-session scores
+  const searchAll = (q: string) => {
+    const qTokens = tokenize(q);
+    if (qTokens.length === 0 || docVectors.length === 0) return { best: null as any, scores: {} as Record<string, number> };
+    const N = Math.max(1, corpus.length);
+    const qtf = new Map<string, number>();
+    qTokens.forEach((t) => qtf.set(t, (qtf.get(t) || 0) + 1));
+    const qvec = new Map<string, number>();
+    let qnorm = 0;
+    qtf.forEach((freq, t) => {
+      const idf = Math.log((N + 1) / (1 + (df.get(t) || 0))) + 1;
+      const w = (freq / qTokens.length) * idf;
+      qvec.set(t, w);
+      qnorm += w * w;
+    });
+    qnorm = Math.sqrt(qnorm) || 1;
+
+    let best: { ref: any; score: number } | null = null;
+    const scores: Record<string, number> = {};
+    docVectors.forEach((d) => {
+      let dot = 0;
+      qvec.forEach((qw, t) => {
+        const dw = d.vec.get(t);
+        if (dw) dot += qw * dw;
+      });
+      const sim = dot / (qnorm * d.norm);
+      scores[d.id] = sim;
+      if (!best || sim > best.score) best = { ref: d.ref, score: sim };
+    });
+    return { best, scores };
+  };
+
   const searchVectors = (q: string) => {
     const qTokens = tokenize(q);
     if (qTokens.length === 0) return null;
@@ -334,15 +401,18 @@ export default function AgentWorkSessionUI() {
     if (!q) {
       setSearchHit(null);
       setSearchScore(null);
+      setSearchScores(null);
       return;
     }
-    const res = searchVectors(q);
-    if (res && res.ref) {
-      setSearchHit(res.ref);
-      setSearchScore(res.score);
+    const { best, scores } = searchAll(q);
+    if (best && best.ref) {
+      setSearchHit(best.ref);
+      setSearchScore(best.score);
+      setSearchScores(scores);
     } else {
       setSearchHit(null);
       setSearchScore(null);
+      setSearchScores(null);
     }
   };
 
@@ -572,7 +642,7 @@ export default function AgentWorkSessionUI() {
                         Open
                       </button>
                       <button
-                        onClick={() => { setSearchHit(null); setSearchScore(null); setSearchQuery(""); }}
+                        onClick={() => { setSearchHit(null); setSearchScore(null); setSearchQuery(""); setSearchScores(null); }}
                         className="rounded-md px-3 py-1.5 text-[0.925rem] ring-1 ring-slate-300 bg-white/70 hover:bg-slate-100 dark:ring-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
                       >
                         Clear
@@ -591,7 +661,11 @@ export default function AgentWorkSessionUI() {
                     return (
                       <div
                         key={s.id}
-                        className="py-3 flex items-center justify-between gap-3 cursor-pointer rounded-xl -mx-5 px-5 sm:-mx-7 sm:px-7 lg:-mx-9 lg:px-9 hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors"
+                        className={classNames(
+                          "py-3 flex items-center justify-between gap-3 cursor-pointer rounded-xl -mx-5 px-5 sm:-mx-7 sm:px-7 lg:-mx-9 lg:px-9 transition-colors",
+                          "hover:bg-slate-900/5 dark:hover:bg-white/5"
+                        )}
+                        style={tintStyle(searchScores ? searchScores[s.id] : undefined)}
                         onClick={() => { setBackTarget({ page: "workflows" }); setSelectedSession(s); setPage("detail"); }}
                       >
                         <div className="flex items-center gap-3 min-w-0">
@@ -673,7 +747,12 @@ export default function AgentWorkSessionUI() {
                               <button
                                 key={s.id}
                                 onClick={(e) => { e.stopPropagation(); setBackTarget({ page: 'day', day: key }); setSelectedSession(s); setPage('detail'); }}
-                                className="w-full overflow-hidden truncate rounded-md bg-slate-900/5 px-2 py-1 text-left text-[0.8rem] text-slate-900 hover:bg-slate-900/10 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
+                                className={classNames(
+                                  "w-full overflow-hidden truncate rounded-md px-2 py-1 text-left text-[0.8rem]",
+                                  "text-slate-900 hover:bg-slate-900/10 dark:text-white dark:hover:bg-white/15",
+                                  "bg-slate-900/5 dark:bg-white/10"
+                                )}
+                                style={tintStyle(searchScores ? searchScores[s.id] : undefined)}
                                 title={s.title}
                               >
                                 {new Date(s.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {s.title}
