@@ -66,6 +66,11 @@ export default function AgentWorkSessionUI() {
   const [isLoading, setIsLoading] = useState(false);
   const [summaryNotes, setSummaryNotes] = useState("");
 
+  // Vector search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchHit, setSearchHit] = useState<any | null>(null);
+  const [searchScore, setSearchScore] = useState<number | null>(null);
+
   const [projectPath, setProjectPath] = useState<string | null>(null);
 
   const [isDark, setIsDark] = useState(() => {
@@ -242,6 +247,105 @@ export default function AgentWorkSessionUI() {
     return map;
   }, [sessions]);
 
+  // ---------- Vector search (TF–IDF cosine over title + description + notes) ----------
+  const stop = new Set([
+    "the","a","an","and","or","to","of","in","on","for","with","at","by","is","it","this","that","as","be","are","was","were","from","your","you","i","we","our"
+  ]);
+  const tokenize = (txt: string) => (txt || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t && !stop.has(t));
+
+  // Build document corpus strings
+  const corpus = useMemo(() => {
+    return sessions.map((s: any) => ({
+      id: s.id,
+      ref: s,
+      tokens: tokenize(`${s.title || ""} ${s.description || ""} ${s.notes || ""}`),
+    }));
+  }, [sessions]);
+
+  // Document frequencies
+  const df = useMemo(() => {
+    const m = new Map<string, number>();
+    corpus.forEach((doc) => {
+      const seen = new Set<string>();
+      doc.tokens.forEach((t) => {
+        if (!seen.has(t)) {
+          seen.add(t);
+          m.set(t, (m.get(t) || 0) + 1);
+        }
+      });
+    });
+    return m;
+  }, [corpus]);
+
+  // Precompute TF–IDF vectors per session
+  const docVectors = useMemo(() => {
+    const N = Math.max(1, corpus.length);
+    return corpus.map((doc) => {
+      const tf = new Map<string, number>();
+      doc.tokens.forEach((t) => tf.set(t, (tf.get(t) || 0) + 1));
+      const tfidf = new Map<string, number>();
+      let norm = 0;
+      tf.forEach((freq, t) => {
+        const idf = Math.log((N + 1) / (1 + (df.get(t) || 0))) + 1;
+        const w = (freq / doc.tokens.length) * idf;
+        tfidf.set(t, w);
+        norm += w * w;
+      });
+      norm = Math.sqrt(norm) || 1;
+      return { id: doc.id, ref: doc.ref, vec: tfidf, norm };
+    });
+  }, [corpus, df]);
+
+  const searchVectors = (q: string) => {
+    const qTokens = tokenize(q);
+    if (qTokens.length === 0) return null;
+    const N = Math.max(1, corpus.length);
+    const qtf = new Map<string, number>();
+    qTokens.forEach((t) => qtf.set(t, (qtf.get(t) || 0) + 1));
+    const qvec = new Map<string, number>();
+    let qnorm = 0;
+    qtf.forEach((freq, t) => {
+      const idf = Math.log((N + 1) / (1 + (df.get(t) || 0))) + 1;
+      const w = (freq / qTokens.length) * idf;
+      qvec.set(t, w);
+      qnorm += w * w;
+    });
+    qnorm = Math.sqrt(qnorm) || 1;
+
+    let best: { ref: any; score: number } | null = null;
+    docVectors.forEach((d) => {
+      let dot = 0;
+      qvec.forEach((qw, t) => {
+        const dw = d.vec.get(t);
+        if (dw) dot += qw * dw;
+      });
+      const sim = dot / (qnorm * d.norm);
+      if (!best || sim > best.score) best = { ref: d.ref, score: sim };
+    });
+    return best;
+  };
+
+  const runSearch = () => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchHit(null);
+      setSearchScore(null);
+      return;
+    }
+    const res = searchVectors(q);
+    if (res && res.ref) {
+      setSearchHit(res.ref);
+      setSearchScore(res.score);
+    } else {
+      setSearchHit(null);
+      setSearchScore(null);
+    }
+  };
+
   return (
     <div className="min-h-[100vh] w-full overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-white">
       {/* Background */}
@@ -404,10 +508,26 @@ export default function AgentWorkSessionUI() {
         {page === "workflows" && (
           <section className="space-y-6">
             <GlassCard>
-              <div className="mb-4 flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
                   <History className="h-5 w-5" />
-                  <h3 className="text-[1.15rem] font-semibold text-slate-900 dark:text-white/90">Past workflows</h3>
+                  <h3 className="text-[1.15rem] font-semibold text-slate-900 dark:text-white/90 mr-2">Past workflows</h3>
+                  {/* Search */}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') runSearch(); }}
+                      placeholder="Search past workflows…"
+                      className="w-full rounded-md border border-slate-300 bg-white/70 px-3 py-2 text-[0.925rem] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40 dark:focus:ring-indigo-300"
+                    />
+                    <button
+                      onClick={runSearch}
+                      className="rounded-md px-3 py-2 text-[0.925rem] ring-1 ring-slate-300 bg-white/70 hover:bg-slate-100 dark:ring-white/15 dark:bg-white/10 dark:hover:bg-white/15 transition"
+                    >
+                      Search
+                    </button>
+                  </div>
                 </div>
                 <div className="inline-flex rounded-lg ring-1 ring-slate-200 bg-white/70 dark:bg-white/5 dark:ring-white/10 overflow-hidden">
                   <button
@@ -434,6 +554,33 @@ export default function AgentWorkSessionUI() {
                   </button>
                 </div>
               </div>
+
+              {searchHit && (
+                <div className="mb-3 rounded-xl ring-1 ring-indigo-300/40 bg-indigo-50/70 p-3 dark:bg-white/5 dark:ring-white/10">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-[0.925rem] font-semibold text-slate-900 dark:text-white">Most relevant: {searchHit.title}</div>
+                      <div className="mt-0.5 text-[0.8rem] text-slate-700 dark:text-white/70">
+                        Score: {searchScore !== null ? searchScore.toFixed(3) : "—"}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => { setBackTarget({ page: "workflows" }); setSelectedSession(searchHit); setPage("detail"); }}
+                        className="rounded-md px-3 py-1.5 text-[0.925rem] text-white bg-indigo-600 hover:brightness-110"
+                      >
+                        Open
+                      </button>
+                      <button
+                        onClick={() => { setSearchHit(null); setSearchScore(null); setSearchQuery(""); }}
+                        className="rounded-md px-3 py-1.5 text-[0.925rem] ring-1 ring-slate-300 bg-white/70 hover:bg-slate-100 dark:ring-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {wfView === "list" && (
                 <div className="divide-y divide-white/10">
