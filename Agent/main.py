@@ -73,11 +73,9 @@ async def handle_workflow_end(request: WorkflowEndRequest):
 
         # --- 2. Manually format the prompt for the LLM ---
         
-        # vvv THIS IS THE FIX vvv
-        # We build the prompt differently if task_description is missing
         user_prompt_content = ""
         if request.task_description:
-            # If we HAVE a description, use it (like before)
+            # If we HAVE a description, use it
             user_prompt_content = f"Task: {request.task_description}\n\nGit Status Report:\n{git_diff}"
         else:
             # If we DON'T, just send the report
@@ -87,12 +85,21 @@ async def handle_workflow_end(request: WorkflowEndRequest):
             {"role": "system", "content": context_agent.instructions},
             {"role": "user", "content": user_prompt_content}
         ]
+        
+        # vvv THIS IS THE FIX vvv
+        # Print the data to console immediately to avoid buffer issues
+        print("="*50)
+        print("[DEBUG] Full Prompt Sent to LLM:")
+        # We print the raw Python object, which the console handles better than JSON dump
+        print(final_prompt_messages) 
+        print("="*50)
         # ^^^ THIS IS THE FIX ^^^
 
         # --- 3. Manually call the LLM (with retries) ---
         summary_markdown = ""
-        for i in range(5):
-            print(f"[Agent] Calling LLM for final summary (Attempt {i+1}/5)...")
+        i = 1
+        while True:
+            print(f"[Agent] Calling LLM for final summary (Attempt {i})...")
             completion = await client.chat.completions.create(
                 model=os.getenv("AGENT_MODEL"),
                 messages=final_prompt_messages,
@@ -102,17 +109,24 @@ async def handle_workflow_end(request: WorkflowEndRequest):
             summary_markdown = completion.choices[0].message.content
             
             if summary_markdown and len(summary_markdown.strip()) > 10:
-                print(f"[Agent Result] Summary generated on attempt {i+1}.")
+                print(f"[Agent Result] Summary generated on attempt {i}.")
                 break
             else:
                 print(f"[Agent Warning] LLM returned an empty/short summary. Retrying...")
+                # print(json.dumps(final_prompt_messages, indent=2))
+                print(git_diff)
+            
+            i += 1
         
         if not summary_markdown or not summary_markdown.strip():
-            print("[Agent Error] LLM failed to generate a summary after 5 attempts.")
+            # print("\n" + "="*50)
+            # print("[CRITICAL ERROR] LLM failed after 5 retries. Input Sent:")
+            # print(json.dumps(final_prompt_messages, indent=2))
+            # print("="*50 + "\n")
             return {"error": "LLM failed to generate summary, please try again."}, 500
 
         return {
-            "summary_title": request.task_description or "Automated Context Summary", # Use a generic title
+            "summary_title": request.task_description or "Automated Context Summary",
             "summary_markdown": summary_markdown
         }
 

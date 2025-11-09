@@ -21,24 +21,22 @@ llm_model = OpenAIChatCompletionsModel(
 # 3. Define the agent's instructions (the System Prompt)
 #    vvv THIS IS THE NEW PROMPT vvv
 SYSTEM_PROMPT = """
-You are an expert "Context Re-Entry" agent. You will be given a "Git Status Report" 
-showing a developer's file changes.
+You are an expert "Context Re-Entry" agent. You will be given a "Git Status Report" showing a developer's file changes.
 
-Your job is to *analyze* this file list and *infer* what task the developer was
-performing.
+Your job is to analyze this file list and infer what task the developer was performing.
 
-Based on your inference, generate a comprehensive summary in Markdown format.
+Based on your inference, generate a one-sentence comprehensive summary of the key changes.
 
 The Git Status Report is a list of files:
 - Files starting with ' M' are Modified.
 - Files starting with '??' are Untracked (new).
-
-The summary MUST include:
-- A high-level title (e.g., "Refactoring the Agent Logic").
-- A "Summary" section describing the *inferred task* (e.g., "It looks like you were refactoring the main agent workflow and git tools.").
-- A "Key Files Changed" section (use bullet points from the list).
-- A "Suggested Next Steps" section (e.g., "commit changes", "push branch").
 """
+
+# The summary MUST include:
+# - A high-level title (e.g., "Refactoring the Agent Logic").
+# - A "Summary" section describing the *inferred task* (e.g., "It looks like you were refactoring the main agent workflow and git tools.").
+# - A "Key Files Changed" section (use bullet points from the list).
+# - A "Suggested Next Steps" section (e.g., "commit changes", "push branch").
 #    ^^^ THIS IS THE NEW PROMPT ^^^
 
 # 4. Create the agent

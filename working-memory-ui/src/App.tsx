@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Play, Square, Clock, History, Brain, Sun, Moon, ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
+import axios from "axios";
 
 // ---------- Utility helpers ----------
 function classNames(...classes: (string | boolean | undefined)[]) {
@@ -64,6 +65,9 @@ export default function AgentWorkSessionUI() {
   const [monthOffset, setMonthOffset] = useState(0);
   const [backTarget, setBackTarget] = useState<{ page: "workflows" | "day"; day?: string } | null>(null);
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [summaryNotes, setSummaryNotes] = useState("");
+
   const [isDark, setIsDark] = useState(() => {
     if (typeof window === "undefined") return true;
     const saved = window.localStorage.getItem("wm-theme");
@@ -115,28 +119,84 @@ export default function AgentWorkSessionUI() {
     const now = Date.now();
     setStartAt(now);
     setElapsed(0);
+    setSummaryNotes("");
   };
 
-  const handleStop = () => {
+  const handleStop = async () => {
     if (!isActive || !startAt) return;
-    const endedAt = Date.now();
-    const title = sessionTitle.trim() ? sessionTitle.trim() : "Focused session";
-    const newSession = {
-      id: `s-${Math.random().toString(36).slice(2, 7)}`,
-      title,
-      description: sessionDescription,
-      notes: "",
-      startedAt: startAt,
-      endedAt,
-      tags: [],
-      highlights: [],
-    };
-    setSessions((prev) => [newSession, ...prev]);
+    
     setIsActive(false);
+    setIsLoading(true);
+    const endedAt = Date.now();
+
+    const project = "/Users/gary/Stuff/DummyProject";
+    const taskDescription = sessionDescription.trim();
+    const payload: { user_id: string; project_path: string; task_description?: string | null } = {
+        user_id: "garysun",
+        project_path: project,
+    };
+
+    if (taskDescription) {
+        payload.task_description = taskDescription;
+    }
+
+    try {
+      console.log("Calling agent backend with payload:" + payload);
+      
+      const response = await axios.post(
+        "http://127.0.0.1:8000/api/v1/workflow/end",
+        payload
+      );
+      
+      console.log("Agent response:", response.data);
+      const summary = response.data.summary_markdown;
+      
+      // --- Save the summary to our state
+      setSummaryNotes(summary); 
+      
+      // --- Create a new session for the UI
+      const title = sessionTitle.trim();
+      const newSession = {
+        id: `s-${Math.random().toString(36).slice(2, 7)}`,
+        title,
+        description: sessionDescription,
+        notes: summary, // --- Add the real summary here
+        startedAt: startAt,
+        endedAt,
+        tags: [],
+        highlights: [],
+      };
+      setSessions((prev) => [newSession, ...prev]);
+
+    } catch (error) {
+      console.error("Failed to call agent:", error);
+      const errorMsg = "Error: Could not save session. Is the backend server running?";
+      setSummaryNotes(errorMsg);
+      alert(errorMsg);
+    }
+
+    setIsLoading(false);
     setStartAt(null);
     setElapsed(0);
     setSessionDescription("");
     setSessionTitle("");
+    // const title = sessionTitle.trim() ? sessionTitle.trim() : "Focused session";
+    // const newSession = {
+    //   id: `s-${Math.random().toString(36).slice(2, 7)}`,
+    //   title,
+    //   description: sessionDescription,
+    //   notes: "",
+    //   startedAt: startAt,
+    //   endedAt,
+    //   tags: [],
+    //   highlights: [],
+    // };
+    // setSessions((prev) => [newSession, ...prev]);
+    // setIsActive(false);
+    // setStartAt(null);
+    // setElapsed(0);
+    // setSessionDescription("");
+    // setSessionTitle("");
   };
 
   const elapsedText = useMemo(() => formatDuration(elapsed), [elapsed]);
@@ -247,6 +307,7 @@ export default function AgentWorkSessionUI() {
             <motion.button
               onClick={isActive ? handleStop : handleStart}
               whileTap={{ scale: 0.98 }}
+              disabled={isLoading || (isActive ? !canStop : !canStart)}
               className={
                 classNames(
                   "inline-flex items-center justify-center gap-3 rounded-lg px-5 py-2.5 font-semibold",
@@ -254,12 +315,21 @@ export default function AgentWorkSessionUI() {
                   isActive
                     ? "bg-gradient-to-b from-rose-600 to-rose-700 ring-rose-300/40 focus:ring-rose-300/60"
                     : "bg-gradient-to-b from-indigo-500 to-indigo-600 ring-indigo-300/40 focus:ring-indigo-300/60",
-                  "text-white shadow-lg hover:brightness-110 transition-all duration-200 hover:scale-[1.04]"
+                  "text-white shadow-lg hover:brightness-110 transition-all duration-200 hover:scale-[1.04]",
+                  (isLoading) && "opacity-50 cursor-wait",
+                  (!isActive && !canStart) && "opacity-50 cursor-not-allowed",
+                  (isActive && !canStop) && "opacity-50 cursor-not-allowed"
                 )
               }
               aria-label={isActive ? "Stop session" : "Start session"}
             >
-              {isActive ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {isLoading ? (
+                <Clock className="h-4 w-4 animate-spin" />
+              ) : isActive ? (
+                <Square className="h-4 w-4" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
               <span className="text-sm">{isActive ? "Stop" : "Start"}</span>
               <span className="tabular-nums text-sm font-mono w-[8ch] text-center">
                 {isActive ? elapsedText : "00:00:00"}
@@ -647,6 +717,7 @@ export default function AgentWorkSessionUI() {
                 <textarea
                   value={sessionDescription}
                   onChange={(e) => setSessionDescription(e.target.value)}
+                  disabled={!isActive}
                   placeholder="Describe this session… (optional)"
                   className="w-full rounded-lg border border-slate-300 bg-white/70 p-3 text-[0.925rem] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40 dark:focus:ring-indigo-300"
                   rows={8}
@@ -655,8 +726,14 @@ export default function AgentWorkSessionUI() {
                 {/* Notes (read-only preview, matches detail page position) */}
                 <div className="mt-6">
                   <label className="block text-[0.8rem] text-slate-600 dark:text-white/60 mb-2">Notes</label>
-                  <div className="w-full rounded-lg border border-slate-300 bg-white/70 p-3 text-[0.925rem] text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white">
-                    <span className="text-slate-500 dark:text-white/50">Notes will auto‑populate when you stop the session.</span>
+                  <div className="w-full rounded-lg border border-slate-300 bg-white/70 p-3 text-[0.925rem] text-slate-900 dark:border-white/10 dark:bg-white/5 dark:text-white whitespace-pre-wrap">
+                    {summaryNotes ? (
+                      summaryNotes
+                    ) : (
+                      <span className="text-slate-500 dark:text-white/50">
+                        {isLoading ? "Agent is generating summary..." : "Notes will auto‑populate when you stop the session."}
+                      </span>
+                    )}
                   </div>
                 </div>
               </GlassCard>
