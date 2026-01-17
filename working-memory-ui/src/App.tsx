@@ -957,7 +957,6 @@ export default function AgentWorkSessionUI() {
                   <textarea
                     value={sessionDescription}
                     onChange={(e) => setSessionDescription(e.target.value)}
-                    disabled={!isActive}
                     placeholder="Describe this session… (optional)"
                     className="w-full rounded-lg border border-slate-300 bg-white/70 p-3 text-[0.925rem] text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40 dark:focus:ring-indigo-300"
                     rows={6}
